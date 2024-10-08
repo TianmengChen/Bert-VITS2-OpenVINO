@@ -353,7 +353,6 @@ def tts_fn(
         style_text,
         style_weight,
     )
-
     audio_concat = np.concatenate(audio_list)
     return "Success", (hps.data.sampling_rate, audio_concat)
 
