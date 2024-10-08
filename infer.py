@@ -17,7 +17,9 @@ from typing import Union
 from text.cleaner import clean_text
 import utils
 
-from models import SynthesizerTrn
+from models import SynthesizerTrn, SynthesizerTrnWrapper
+import os
+import openvino as ov
 from text.symbols import symbols
 
 from oldVersion.V220.models import SynthesizerTrn as V220SynthesizerTrn
@@ -82,26 +84,32 @@ symbolsMap = {
 
 
 def get_net_g(model_path: str, version: str, device: str, hps):
-    if version != latest_version:
-        net_g = SynthesizerTrnMap[version](
-            len(symbolsMap[version]),
-            hps.data.filter_length // 2 + 1,
-            hps.train.segment_size // hps.data.hop_length,
-            n_speakers=hps.data.n_speakers,
-            **hps.model,
-        ).to(device)
+    if not os.path.exists("./ov_models/BERTVits2.xml"):
+        if version != latest_version:
+            net_g = SynthesizerTrnMap[version](
+                len(symbolsMap[version]),
+                hps.data.filter_length // 2 + 1,
+                hps.train.segment_size // hps.data.hop_length,
+                n_speakers=hps.data.n_speakers,
+                **hps.model,
+            ).to(device)
+        else:
+            # 当前版本模型 net_g
+            print("this is latest version!!!!!!!!!!!")
+            net_g = SynthesizerTrn(
+                len(symbols),
+                hps.data.filter_length // 2 + 1,
+                hps.train.segment_size // hps.data.hop_length,
+                n_speakers=hps.data.n_speakers,
+                **hps.model,
+            ).to(device)
+        _ = net_g.eval()
+        _ = utils.load_checkpoint(model_path, net_g, None, skip_optimizer=True)
+        return net_g
     else:
-        # 当前版本模型 net_g
-        net_g = SynthesizerTrn(
-            len(symbols),
-            hps.data.filter_length // 2 + 1,
-            hps.train.segment_size // hps.data.hop_length,
-            n_speakers=hps.data.n_speakers,
-            **hps.model,
-        ).to(device)
-    _ = net_g.eval()
-    _ = utils.load_checkpoint(model_path, net_g, None, skip_optimizer=True)
-    return net_g
+        core = ov.Core()
+        net_g = core.compile_model("./ov_models/BERTVits2.xml")
+        return net_g
 
 
 def get_text(text, language_str, hps, device, style_text=None, style_weight=0.7):
@@ -298,25 +306,64 @@ def infer(
         # emo = emo.to(device).unsqueeze(0)
         del phones
         speakers = torch.LongTensor([hps.data.spk2id[sid]]).to(device)
-        audio = (
-            net_g.infer(
-                x_tst,
-                x_tst_lengths,
-                speakers,
-                tones,
-                lang_ids,
-                bert,
-                ja_bert,
-                en_bert,
-                sdp_ratio=sdp_ratio,
-                noise_scale=noise_scale,
-                noise_scale_w=noise_scale_w,
-                length_scale=length_scale,
-            )[0][0, 0]
-            .data.cpu()
-            .float()
-            .numpy()
-        )
+        if not os.path.exists("./ov_models/BERTVits2.xml"):
+            print("try to convert SynthesizerTrnWrapper to OpenVINO IR")
+            example_input = {
+                "x_tst": x_tst,
+                "x_tst_lengths": x_tst_lengths,
+                "speakers": speakers,
+                "tones": tones,
+                "lang_ids": lang_ids,
+                "bert": bert,
+                "ja_bert": ja_bert,
+                "en_bert": en_bert,
+                "sdp_ratio": torch.FloatTensor([sdp_ratio]).to(device),
+                "noise_scale": torch.FloatTensor([noise_scale]).to(device),
+                "noise_scale_w": torch.FloatTensor([noise_scale_w]).to(device),
+                "length_scale": torch.LongTensor([length_scale]).to(device),
+            }
+            net_g = SynthesizerTrnWrapper(net_g)
+
+            ov_model = ov.convert_model(net_g, example_input=example_input)
+            ov.save_model(ov_model, './ov_models/BERTVits2.xml')
+            exit()          
+        else:
+            input = {
+                "x_tst": x_tst,
+                "x_tst_lengths": x_tst_lengths,
+                "speakers": speakers,
+                "tones": tones,
+                "lang_ids": lang_ids,
+                "bert": bert,
+                "ja_bert": ja_bert,
+                "en_bert": en_bert,
+                "sdp_ratio": torch.FloatTensor([sdp_ratio]).to(device),
+                "noise_scale": torch.FloatTensor([noise_scale]).to(device),
+                "noise_scale_w": torch.FloatTensor([noise_scale_w]).to(device),
+                "length_scale": torch.LongTensor([length_scale]).to(device),
+            }
+            ov_output = net_g(input)
+            audio = ov_output[0][0, 0]
+        
+        # audio = (
+        #     net_g.infer(
+        #         x_tst,
+        #         x_tst_lengths,
+        #         speakers,
+        #         tones,
+        #         lang_ids,
+        #         bert,
+        #         ja_bert,
+        #         en_bert,
+        #         sdp_ratio=sdp_ratio,
+        #         noise_scale=noise_scale,
+        #         noise_scale_w=noise_scale_w,
+        #         length_scale=length_scale,
+        #     )[0][0, 0]
+        #     .data.cpu()
+        #     .float()
+        #     .numpy()
+        # )
         del (
             x_tst,
             tones,

@@ -1072,3 +1072,42 @@ class SynthesizerTrn(nn.Module):
         z = self.flow(z_p, y_mask, g=g, reverse=True)
         o = self.dec((z * y_mask)[:, :, :max_len], g=g)
         return o, attn, y_mask, (z, z_p, m_p, logs_p)
+
+
+class SynthesizerTrnWrapper(torch.nn.Module):
+    def __init__(
+            self, 
+            model,
+            ):
+        super().__init__()
+        self.model = model
+
+    def forward(
+        self,
+        x_tst,
+        x_tst_lengths,
+        speakers,
+        tones,
+        lang_ids,
+        bert,
+        ja_bert,
+        en_bert,
+        sdp_ratio,
+        noise_scale,
+        noise_scale_w,
+        length_scale,
+    ):
+        return self.model.infer(
+        x_tst,
+        x_tst_lengths,
+        speakers,
+        tones,
+        lang_ids,
+        bert,
+        ja_bert,
+        en_bert,
+        sdp_ratio=sdp_ratio,
+        noise_scale=noise_scale,
+        noise_scale_w=noise_scale_w,
+        length_scale=length_scale,
+    )
