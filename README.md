@@ -9,7 +9,7 @@ Then rerun `webui.py` and give some English example input for Language EN pipeli
 Then rerun `webui.py` and give some Chinese example input for Language ZH pipeline, then click `生成音频`, you will still get Error but it's okey, you will also get the converted IR model `BERTVits2` under folder `ov_models`:
 ![alt text](image_0.png)
 
-Then rerun `webui.py` and give some Chinese and English example input Language mix pipeline, then click `检测语言，并整理为MIX格式`, you will get the result and you can listen.
+Then rerun `webui.py` and give some Chinese and English example input Language mix pipeline, then click `检测语言，并整理为MIX格式` and click `生成音频`, you will get the result and you can listen.
 ![alt text](image_2.png)
 
 <font face="黑体" color=red>Following are the original README:</font>
