@@ -20,6 +20,8 @@ import utils
 from models import SynthesizerTrn, SynthesizerTrnWrapper
 import os
 import openvino as ov
+import numpy as np
+
 from text.symbols import symbols
 
 from oldVersion.V220.models import SynthesizerTrn as V220SynthesizerTrn
@@ -295,18 +297,18 @@ def infer(
         bert = bert[:, :-2]
         ja_bert = ja_bert[:, :-2]
         en_bert = en_bert[:, :-2]
-    with torch.no_grad():
-        x_tst = phones.to(device).unsqueeze(0)
-        tones = tones.to(device).unsqueeze(0)
-        lang_ids = lang_ids.to(device).unsqueeze(0)
-        bert = bert.to(device).unsqueeze(0)
-        ja_bert = ja_bert.to(device).unsqueeze(0)
-        en_bert = en_bert.to(device).unsqueeze(0)
-        x_tst_lengths = torch.LongTensor([phones.size(0)]).to(device)
-        # emo = emo.to(device).unsqueeze(0)
-        del phones
-        speakers = torch.LongTensor([hps.data.spk2id[sid]]).to(device)
-        if not os.path.exists("./ov_models/BERTVits2.xml"):
+    if not os.path.exists("./ov_models/BERTVits2.xml"):
+        with torch.no_grad():
+            x_tst = phones.to(device).unsqueeze(0)
+            tones = tones.to(device).unsqueeze(0)
+            lang_ids = lang_ids.to(device).unsqueeze(0)
+            bert = bert.to(device).unsqueeze(0)
+            ja_bert = ja_bert.to(device).unsqueeze(0)
+            en_bert = en_bert.to(device).unsqueeze(0)
+            x_tst_lengths = torch.LongTensor([phones.size(0)]).to(device)
+            # emo = emo.to(device).unsqueeze(0)
+            del phones
+            speakers = torch.LongTensor([hps.data.spk2id[sid]]).to(device)
             print("try to convert SynthesizerTrnWrapper to OpenVINO IR")
             example_input = {
                 "x_tst": x_tst,
@@ -327,43 +329,37 @@ def infer(
             ov_model = ov.convert_model(net_g, example_input=example_input)
             ov.save_model(ov_model, './ov_models/BERTVits2.xml')
             exit()          
-        else:
-            input = {
-                "x_tst": x_tst,
-                "x_tst_lengths": x_tst_lengths,
-                "speakers": speakers,
-                "tones": tones,
-                "lang_ids": lang_ids,
-                "bert": bert,
-                "ja_bert": ja_bert,
-                "en_bert": en_bert,
-                "sdp_ratio": torch.FloatTensor([sdp_ratio]).to(device),
-                "noise_scale": torch.FloatTensor([noise_scale]).to(device),
-                "noise_scale_w": torch.FloatTensor([noise_scale_w]).to(device),
-                "length_scale": torch.LongTensor([length_scale]).to(device),
-            }
-            ov_output = net_g(input)
-            audio = ov_output[0][0, 0]
+    else:
+        x_tst = np.expand_dims(phones, axis=0) 
+        tones = np.expand_dims(tones, axis=0)
+        lang_ids = np.expand_dims(lang_ids, axis=0)
+        bert = np.expand_dims(bert, axis=0)
+        ja_bert = np.expand_dims(ja_bert, axis=0)
+        en_bert = np.expand_dims(en_bert, axis=0)
+        x_tst_lengths = np.array([phones.size(0)])
+        sdp_ratio =  np.array([sdp_ratio])
+        noise_scale =  np.array([noise_scale])
+        noise_scale_w =  np.array([noise_scale_w])
+        length_scale =  np.array([length_scale])
+        del phones
+        speakers = [hps.data.spk2id[sid]]
+        input = {
+            "x_tst": x_tst,
+            "x_tst_lengths": x_tst_lengths,
+            "speakers": speakers,
+            "tones": tones,
+            "lang_ids": lang_ids,
+            "bert": bert,
+            "ja_bert": ja_bert,
+            "en_bert": en_bert,
+            "sdp_ratio": sdp_ratio,
+            "noise_scale": noise_scale,
+            "noise_scale_w": noise_scale_w,
+            "length_scale": length_scale,
+        }
+        ov_output = net_g(input)
+        audio = ov_output[0][0, 0]
         
-        # audio = (
-        #     net_g.infer(
-        #         x_tst,
-        #         x_tst_lengths,
-        #         speakers,
-        #         tones,
-        #         lang_ids,
-        #         bert,
-        #         ja_bert,
-        #         en_bert,
-        #         sdp_ratio=sdp_ratio,
-        #         noise_scale=noise_scale,
-        #         noise_scale_w=noise_scale_w,
-        #         length_scale=length_scale,
-        #     )[0][0, 0]
-        #     .data.cpu()
-        #     .float()
-        #     .numpy()
-        # )
         del (
             x_tst,
             tones,
@@ -433,24 +429,25 @@ def infer_multilang(
         phones.append(temp_phones)
         tones.append(temp_tones)
         lang_ids.append(temp_lang_ids)
-    bert = torch.concatenate(bert, dim=1)
-    ja_bert = torch.concatenate(ja_bert, dim=1)
-    en_bert = torch.concatenate(en_bert, dim=1)
-    phones = torch.concatenate(phones, dim=0)
-    tones = torch.concatenate(tones, dim=0)
-    lang_ids = torch.concatenate(lang_ids, dim=0)
-    with torch.no_grad():
-        x_tst = phones.to(device).unsqueeze(0)
-        tones = tones.to(device).unsqueeze(0)
-        lang_ids = lang_ids.to(device).unsqueeze(0)
-        bert = bert.to(device).unsqueeze(0)
-        ja_bert = ja_bert.to(device).unsqueeze(0)
-        en_bert = en_bert.to(device).unsqueeze(0)
-        # emo = emo.to(device).unsqueeze(0)
-        x_tst_lengths = torch.LongTensor([phones.size(0)]).to(device)
-        del phones
-        speakers = torch.LongTensor([hps.data.spk2id[sid]]).to(device)
-        if not os.path.exists("./ov_models/BERTVits2.xml"):
+
+    if not os.path.exists("./ov_models/BERTVits2.xml"):
+        bert = torch.concatenate(bert, dim=1)
+        ja_bert = torch.concatenate(ja_bert, dim=1)
+        en_bert = torch.concatenate(en_bert, dim=1)
+        phones = torch.concatenate(phones, dim=0)
+        tones = torch.concatenate(tones, dim=0)
+        lang_ids = torch.concatenate(lang_ids, dim=0)
+        with torch.no_grad():
+            x_tst = phones.to(device).unsqueeze(0)
+            tones = tones.to(device).unsqueeze(0)
+            lang_ids = lang_ids.to(device).unsqueeze(0)
+            bert = bert.to(device).unsqueeze(0)
+            ja_bert = ja_bert.to(device).unsqueeze(0)
+            en_bert = en_bert.to(device).unsqueeze(0)
+            # emo = emo.to(device).unsqueeze(0)
+            x_tst_lengths = torch.LongTensor([phones.size(0)]).to(device)
+            del phones
+            speakers = torch.LongTensor([hps.data.spk2id[sid]]).to(device)
             print("try to convert SynthesizerTrnWrapper to OpenVINO IR")
             example_input = {
                 "x_tst": x_tst,
@@ -471,42 +468,45 @@ def infer_multilang(
             ov_model = ov.convert_model(net_g, example_input=example_input)
             ov.save_model(ov_model, './ov_models/BERTVits2.xml')
             exit()          
-        else:
-            input = {
-                "x_tst": x_tst,
-                "x_tst_lengths": x_tst_lengths,
-                "speakers": speakers,
-                "tones": tones,
-                "lang_ids": lang_ids,
-                "bert": bert,
-                "ja_bert": ja_bert,
-                "en_bert": en_bert,
-                "sdp_ratio": torch.FloatTensor([sdp_ratio]).to(device),
-                "noise_scale": torch.FloatTensor([noise_scale]).to(device),
-                "noise_scale_w": torch.FloatTensor([noise_scale_w]).to(device),
-                "length_scale": torch.LongTensor([length_scale]).to(device),
-            }
-            ov_output = net_g(input)
-            audio = ov_output[0][0, 0]
-        # audio = (
-        #     net_g.infer(
-        #         x_tst,
-        #         x_tst_lengths,
-        #         speakers,
-        #         tones,
-        #         lang_ids,
-        #         bert,
-        #         ja_bert,
-        #         en_bert,
-        #         sdp_ratio=sdp_ratio,
-        #         noise_scale=noise_scale,
-        #         noise_scale_w=noise_scale_w,
-        #         length_scale=length_scale,
-        #     )[0][0, 0]
-        #     .data.cpu()
-        #     .float()
-        #     .numpy()
-        # )
+    else:
+        bert = np.concatenate(bert, axis=1)
+        ja_bert = np.concatenate(ja_bert, axis=1)
+        en_bert = np.concatenate(en_bert, axis=1)
+        phones = np.concatenate(phones, axis=0)
+        tones = np.concatenate(tones, axis=0)
+        lang_ids = np.concatenate(lang_ids, axis=0)
+
+        x_tst = np.expand_dims(phones, axis=0) 
+        tones = np.expand_dims(tones, axis=0)
+        lang_ids = np.expand_dims(lang_ids, axis=0)
+        bert = np.expand_dims(bert, axis=0)
+        ja_bert = np.expand_dims(ja_bert, axis=0)
+        en_bert = np.expand_dims(en_bert, axis=0)
+
+        x_tst_lengths = np.array([phones.size])
+
+        sdp_ratio =  np.array([sdp_ratio])
+        noise_scale =  np.array([noise_scale])
+        noise_scale_w =  np.array([noise_scale_w])
+        length_scale =  np.array([length_scale])
+        speakers = [hps.data.spk2id[sid]]
+        input = {
+            "x_tst": x_tst,
+            "x_tst_lengths": x_tst_lengths,
+            "speakers": speakers,
+            "tones": tones,
+            "lang_ids": lang_ids,
+            "bert": bert,
+            "ja_bert": ja_bert,
+            "en_bert": en_bert,
+            "sdp_ratio": sdp_ratio,
+            "noise_scale": noise_scale,
+            "noise_scale_w": noise_scale_w,
+            "length_scale": length_scale,
+        }
+        ov_output = net_g(input)
+        audio = ov_output[0][0, 0]
+
         del (
             x_tst,
             tones,
