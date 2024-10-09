@@ -1,3 +1,19 @@
+Please first follow README for `webui_preprocess.py` of pytorch backend pipeline first, after downloading all the needed pytorch model files, run `webui.py` and then follow the README below.
+
+First give some Chinese example input for Language ZH pipeline, then click `生成音频`, you will get Error but it's okey, you will also get the converted IR model `BERT_ZH` under folder `ov_models`:
+![alt text](image_0.png)
+
+Then rerun `webui.py` and give some English example input for Language EN pipeline, then change Language selection to EN and click `生成音频`, you will get Error but it's okey, you will also get the converted IR model `BERT_EN` under folder `ov_models`:
+![alt text](image_1.png)
+
+Then rerun `webui.py` and give some Chinese example input for Language ZH pipeline, then click `生成音频`, you will still get Error but it's okey, you will also get the converted IR model `BERTVits2` under folder `ov_models`:
+![alt text](image_0.png)
+
+Then rerun `webui.py` and give some Chinese and English example input Language mix pipeline, then click `检测语言，并整理为MIX格式`, you will get the result and you can listen.
+![alt text](image_2.png)
+
+<font face="黑体" color=red>Following are the original README:</font>
+
 <div align="center">
 
 <img alt="LOGO" src="https://avatars.githubusercontent.com/u/122017386" width="256" height="256" />
