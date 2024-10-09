@@ -45,7 +45,7 @@ def get_bert_feature(
             ov.save_model(ov_model, './ov_models/BERT_ZH.xml')
         print("convert success, please run pipeline from begin")
         exit()
-    else:
+    elif os.path.exists("./ov_models/BERTVits2.xml"):
         core = ov.Core()
         bert_zh = core.compile_model("./ov_models/BERT_ZH.xml")
         inputs = tokenizer(text, return_tensors="pt")
@@ -75,6 +75,38 @@ def get_bert_feature(
 
         return phone_level_feature.T
 
+    else:
+        if device not in models.keys():
+            models[device] = AutoModelForMaskedLM.from_pretrained(LOCAL_PATH).to(device)
+        with torch.no_grad():
+            inputs = tokenizer(text, return_tensors="pt")
+            for i in inputs:
+                inputs[i] = inputs[i].to(device)
+            res = models[device](**inputs, output_hidden_states=True)
+            res = torch.cat(res["hidden_states"][-3:-2], -1)[0].cpu()
+            if style_text:
+                style_inputs = tokenizer(style_text, return_tensors="pt")
+                for i in style_inputs:
+                    style_inputs[i] = style_inputs[i].to(device)
+                style_res = models[device](**style_inputs, output_hidden_states=True)
+                style_res = torch.cat(style_res["hidden_states"][-3:-2], -1)[0].cpu()
+                style_res_mean = style_res.mean(0)
+        assert len(word2ph) == len(text) + 2
+        word2phone = word2ph
+        phone_level_feature = []
+        for i in range(len(word2phone)):
+            if style_text:
+                repeat_feature = (
+                    res[i].repeat(word2phone[i], 1) * (1 - style_weight)
+                    + style_res_mean.repeat(word2phone[i], 1) * style_weight
+                )
+            else:
+                repeat_feature = res[i].repeat(word2phone[i], 1)
+            phone_level_feature.append(repeat_feature)
+
+        phone_level_feature = torch.cat(phone_level_feature, dim=0)
+
+        return phone_level_feature.T
 
 if __name__ == "__main__":
     word_level_feature = torch.rand(38, 1024)  # 12个词,每个词1024维特征
